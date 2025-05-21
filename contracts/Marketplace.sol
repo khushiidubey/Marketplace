@@ -170,4 +170,30 @@ contract CreditMarketplace {
             credit.isListed
         );
     }
+
+    /**
+     * @dev Returns a list of all currently listed credit IDs
+     * @return listedCreditIds Array of listed credit IDs
+     */
+    function getListedCredits() public view returns (uint[] memory listedCreditIds) {
+        uint totalCredits = nextCreditId - 1;
+        uint count = 0;
+
+        // Count listed credits
+        for (uint i = 1; i <= totalCredits; i++) {
+            if (credits[i].isListed) {
+                count++;
+            }
+        }
+
+        listedCreditIds = new uint[](count);
+        uint index = 0;
+
+        // Populate the array
+        for (uint i = 1; i <= totalCredits; i++) {
+            if (credits[i].isListed) {
+                listedCreditIds[index++] = i;
+            }
+        }
+    }
 }
