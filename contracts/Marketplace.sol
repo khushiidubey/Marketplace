@@ -2,234 +2,207 @@
 pragma solidity ^0.8.17;
 
 /**
- * @title DAOTreasury
- * @dev A smart contract for managing DAO treasury with proposal and voting mechanisms
+ * @title CreditMarketplace
+ * @dev Contract for listing, buying and trading credits
  */
-contract DAOTreasury {
-    // Structure for funding proposals
-    struct Proposal {
-        uint256 id;
-        address proposer;
-        address payable recipient;
-        uint256 amount;
-        string description;
-        uint256 votesFor;
-        uint256 votesAgainst;
-        bool executed;
-        uint256 deadline;
-        mapping(address => bool) hasVoted;
+contract CreditMarketplace {
+    // Credit structure
+    struct Credit {
+        uint id;
+        address owner;
+        string creditType; // e.g. "Carbon", "Renewable Energy", etc.
+        uint amount;
+        uint pricePerUnit;
+        bool isListed;
     }
 
-    // Contract state variables
-    address public admin;
-    mapping(uint256 => Proposal) public proposals;
-    uint256 public proposalCount;
-    mapping(address => uint256) public memberTokens;
-    uint256 public totalTokens;
-    uint256 public quorum; // Percentage of tokens needed to pass a proposal (0-100)
-    uint256 public votingPeriod; // Time in seconds for voting on a proposal
+    // Credit ID counter
+    uint private nextCreditId = 1;
+
+    // Mapping from credit ID to Credit
+    mapping(uint => Credit) public credits;
 
     // Events
-    event ProposalCreated(uint256 proposalId, address proposer, address recipient, uint256 amount, string description);
-    event VoteCast(uint256 proposalId, address voter, bool support, uint256 weight);
-    event ProposalExecuted(uint256 proposalId);
-    event MemberAdded(address member, uint256 tokens);
-    event FundsDeposited(address from, uint256 amount);
+    event CreditListed(
+        uint indexed creditId,
+        address indexed owner,
+        string creditType,
+        uint amount,
+        uint pricePerUnit
+    );
+    event CreditPurchased(
+        uint indexed creditId,
+        address indexed oldOwner,
+        address indexed newOwner,
+        uint amount,
+        uint totalPrice
+    );
+    event CreditDelisted(uint indexed creditId, address indexed owner);
+    event CreditPriceUpdated(uint indexed creditId, uint oldPrice, uint newPrice);
 
-    // Modifiers
-    modifier onlyAdmin() {
-        require(msg.sender == admin, "Only admin can perform this action");
-        _;
-    }
+    /**
+     * @dev Lists a new credit on the marketplace
+     */
+    function listCredit(
+        string memory _creditType,
+        uint _amount,
+        uint _pricePerUnit
+    ) public returns (uint) {
+        require(_amount > 0, "Amount must be greater than zero");
+        require(_pricePerUnit > 0, "Price must be greater than zero");
 
-    modifier onlyMember() {
-        require(memberTokens[msg.sender] > 0, "Only members can perform this action");
-        _;
-    }
+        uint creditId = nextCreditId++;
 
-    // Constructor
-    constructor(uint256 _quorum, uint256 _votingPeriod) {
-        require(_quorum <= 100, "Quorum must be <= 100%");
-        admin = msg.sender;
-        quorum = _quorum;
-        votingPeriod = _votingPeriod;
+        credits[creditId] = Credit({
+            id: creditId,
+            owner: msg.sender,
+            creditType: _creditType,
+            amount: _amount,
+            pricePerUnit: _pricePerUnit,
+            isListed: true
+        });
 
-        // Add admin as first member
-        memberTokens[admin] = 1;
-        totalTokens = 1;
+        emit CreditListed(creditId, msg.sender, _creditType, _amount, _pricePerUnit);
+
+        return creditId;
     }
 
     /**
-     * @dev Allow members to create a funding proposal
+     * @dev Purchases credits from the marketplace
      */
-    function createProposal(
-        address payable _recipient,
-        uint256 _amount,
-        string memory _description
-    ) external onlyMember returns (uint256) {
-        require(_amount <= address(this).balance, "Requested amount exceeds treasury balance");
+    function purchaseCredit(uint _creditId, uint _amount) public payable {
+        Credit storage credit = credits[_creditId];
 
-        uint256 proposalId = proposalCount++;
+        require(credit.isListed, "Credit is not listed for sale");
+        require(credit.owner != msg.sender, "You cannot buy your own credits");
+        require(credit.amount >= _amount, "Not enough credits available");
 
-        Proposal storage newProposal = proposals[proposalId];
-        newProposal.id = proposalId;
-        newProposal.proposer = msg.sender;
-        newProposal.recipient = _recipient;
-        newProposal.amount = _amount;
-        newProposal.description = _description;
-        newProposal.deadline = block.timestamp + votingPeriod;
-        newProposal.executed = false;
+        uint totalPrice = _amount * credit.pricePerUnit;
+        require(msg.value >= totalPrice, "Insufficient payment");
 
-        emit ProposalCreated(proposalId, msg.sender, _recipient, _amount, _description);
+        address payable seller = payable(credit.owner);
 
-        return proposalId;
-    }
+        // Update credit amount or remove if all purchased
+        if (credit.amount == _amount) {
+            credit.isListed = false;
+        }
+        credit.amount -= _amount;
 
-    /**
-     * @dev Allow members to vote on proposals
-     */
-    function castVote(uint256 _proposalId, bool _support) external onlyMember {
-        Proposal storage proposal = proposals[_proposalId];
-
-        require(block.timestamp < proposal.deadline, "Voting period has ended");
-        require(!proposal.executed, "Proposal has already been executed");
-        require(!proposal.hasVoted[msg.sender], "Member has already voted");
-
-        proposal.hasVoted[msg.sender] = true;
-
-        uint256 voteWeight = memberTokens[msg.sender];
-
-        if (_support) {
-            proposal.votesFor += voteWeight;
-        } else {
-            proposal.votesAgainst += voteWeight;
+        // Transfer ownership if all credits are bought
+        if (credit.amount == 0) {
+            credit.owner = msg.sender;
         }
 
-        emit VoteCast(_proposalId, msg.sender, _support, voteWeight);
+        // Send payment to seller
+        seller.transfer(totalPrice);
 
-        if (canExecute(_proposalId)) {
-            executeProposal(_proposalId);
-        }
-    }
-
-    /**
-     * @dev Execute a proposal if it has passed
-     */
-    function executeProposal(uint256 _proposalId) public {
-        require(canExecute(_proposalId), "Proposal cannot be executed");
-
-        Proposal storage proposal = proposals[_proposalId];
-        proposal.executed = true;
-
-        (bool success, ) = proposal.recipient.call{value: proposal.amount}("");
-        require(success, "Transfer failed");
-
-        emit ProposalExecuted(_proposalId);
-    }
-
-    /**
-     * @dev Check if a proposal can be executed
-     */
-    function canExecute(uint256 _proposalId) public view returns (bool) {
-        Proposal storage proposal = proposals[_proposalId];
-
-        if (proposal.executed) {
-            return false;
+        // Refund excess payment
+        if (msg.value > totalPrice) {
+            payable(msg.sender).transfer(msg.value - totalPrice);
         }
 
-        bool hasEnded = block.timestamp >= proposal.deadline;
-        uint256 totalVotes = proposal.votesFor + proposal.votesAgainst;
-        bool quorumReached = (totalVotes * 100) / totalTokens >= quorum;
-
-        return hasEnded && quorumReached && proposal.votesFor > proposal.votesAgainst;
+        emit CreditPurchased(_creditId, seller, msg.sender, _amount, totalPrice);
     }
 
     /**
-     * @dev Allow admin to add new members or update existing ones
+     * @dev Removes a credit listing from the marketplace
      */
-    function updateMember(address _member, uint256 _tokens) external onlyAdmin {
-        uint256 currentTokens = memberTokens[_member];
-        memberTokens[_member] = _tokens;
+    function delistCredit(uint _creditId) public {
+        Credit storage credit = credits[_creditId];
 
-        totalTokens = totalTokens - currentTokens + _tokens;
+        require(credit.owner == msg.sender, "Only owner can delist credits");
+        require(credit.isListed, "Credit is not listed");
 
-        emit MemberAdded(_member, _tokens);
+        credit.isListed = false;
+
+        emit CreditDelisted(_creditId, msg.sender);
     }
 
     /**
-     * @dev Allow anyone to deposit funds into the treasury
+     * @dev Updates the price per unit for a listed credit
      */
-    receive() external payable {
-        emit FundsDeposited(msg.sender, msg.value);
+    function updateCreditPrice(uint _creditId, uint _newPricePerUnit) public {
+        Credit storage credit = credits[_creditId];
+
+        require(credit.owner == msg.sender, "Only the credit owner can update the price");
+        require(credit.isListed, "Credit must be listed to update price");
+        require(_newPricePerUnit > 0, "Price must be greater than zero");
+
+        uint oldPrice = credit.pricePerUnit;
+        credit.pricePerUnit = _newPricePerUnit;
+
+        emit CreditPriceUpdated(_creditId, oldPrice, _newPricePerUnit);
     }
 
     /**
-     * @dev Get basic information about a proposal
+     * @dev Gets details of a specific credit
      */
-    function getProposalInfo(uint256 _proposalId) external view returns (
-        address proposer,
-        address recipient,
-        uint256 amount,
-        string memory description,
-        uint256 votesFor,
-        uint256 votesAgainst,
-        bool executed,
-        uint256 deadline
-    ) {
-        Proposal storage proposal = proposals[_proposalId];
+    function getCreditDetails(uint _creditId)
+        public
+        view
+        returns (
+            uint id,
+            address owner,
+            string memory creditType,
+            uint amount,
+            uint pricePerUnit,
+            bool isListed
+        )
+    {
+        Credit storage credit = credits[_creditId];
         return (
-            proposal.proposer,
-            proposal.recipient,
-            proposal.amount,
-            proposal.description,
-            proposal.votesFor,
-            proposal.votesAgainst,
-            proposal.executed,
-            proposal.deadline
+            credit.id,
+            credit.owner,
+            credit.creditType,
+            credit.amount,
+            credit.pricePerUnit,
+            credit.isListed
         );
     }
 
     /**
-     * @dev Allow admin to withdraw funds from the treasury
-     * @param _amount Amount to withdraw
-     * @param _recipient Address to receive the withdrawn funds
+     * @dev Returns a list of all currently listed credit IDs
      */
-    function adminWithdraw(uint256 _amount, address payable _recipient) external onlyAdmin {
-        require(_amount <= address(this).balance, "Insufficient treasury balance");
-        require(_recipient != address(0), "Invalid recipient address");
+    function getListedCredits() public view returns (uint[] memory listedCreditIds) {
+        uint totalCredits = nextCreditId - 1;
+        uint count = 0;
 
-        (bool success, ) = _recipient.call{value: _amount}("");
-        require(success, "Admin withdrawal failed");
-    }
-
-    /**
-     * @dev Check if a member has voted on a proposal
-     */
-    function getHasVoted(uint256 _proposalId, address _voter) external view returns (bool) {
-        return proposals[_proposalId].hasVoted[_voter];
-    }
-
-    /**
-     * @dev Returns a list of active proposal IDs
-     */
-    function getActiveProposals() external view returns (uint256[] memory) {
-        uint256[] memory temp = new uint256[](proposalCount);
-        uint256 activeCount = 0;
-
-        for (uint256 i = 0; i < proposalCount; i++) {
-            Proposal storage proposal = proposals[i];
-            if (!proposal.executed && block.timestamp < proposal.deadline) {
-                temp[activeCount] = i;
-                activeCount++;
+        for (uint i = 1; i <= totalCredits; i++) {
+            if (credits[i].isListed) {
+                count++;
             }
         }
 
-        // Create a trimmed array of active proposal IDs
-        uint256[] memory activeProposals = new uint256[](activeCount);
-        for (uint256 j = 0; j < activeCount; j++) {
-            activeProposals[j] = temp[j];
+        listedCreditIds = new uint[](count);
+        uint index = 0;
+
+        for (uint i = 1; i <= totalCredits; i++) {
+            if (credits[i].isListed) {
+                listedCreditIds[index++] = i;
+            }
+        }
+    }
+
+    /**
+     * @dev Returns credit IDs owned by a specific address
+     */
+    function getCreditsByOwner(address _owner) public view returns (uint[] memory ownedCredits) {
+        uint totalCredits = nextCreditId - 1;
+        uint count = 0;
+
+        for (uint i = 1; i <= totalCredits; i++) {
+            if (credits[i].owner == _owner) {
+                count++;
+            }
         }
 
-        return activeProposals;
+        ownedCredits = new uint[](count);
+        uint index = 0;
+
+        for (uint i = 1; i <= totalCredits; i++) {
+            if (credits[i].owner == _owner) {
+                ownedCredits[index++] = i;
+            }
+        }
     }
 }
