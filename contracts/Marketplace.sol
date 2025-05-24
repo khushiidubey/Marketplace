@@ -39,6 +39,7 @@ contract CreditMarketplace {
     );
     event CreditDelisted(uint indexed creditId, address indexed owner);
     event CreditPriceUpdated(uint indexed creditId, uint oldPrice, uint newPrice);
+    event CreditRelisted(uint indexed creditId, uint newPricePerUnit);
 
     /**
      * @dev Lists a new credit on the marketplace
@@ -132,6 +133,23 @@ contract CreditMarketplace {
         credit.pricePerUnit = _newPricePerUnit;
 
         emit CreditPriceUpdated(_creditId, oldPrice, _newPricePerUnit);
+    }
+
+    /**
+     * @dev Allows relisting of a credit with a new price
+     */
+    function relistCredit(uint _creditId, uint _newPricePerUnit) public {
+        Credit storage credit = credits[_creditId];
+
+        require(credit.owner == msg.sender, "Only the owner can relist");
+        require(!credit.isListed, "Credit is already listed");
+        require(credit.amount > 0, "No credit amount available");
+        require(_newPricePerUnit > 0, "Price must be greater than zero");
+
+        credit.pricePerUnit = _newPricePerUnit;
+        credit.isListed = true;
+
+        emit CreditRelisted(_creditId, _newPricePerUnit);
     }
 
     /**
