@@ -223,4 +223,19 @@ contract CreditMarketplace {
             }
         }
     }
+
+    /**
+     * @dev Returns total value of all credits owned by an address
+     */
+    function getTotalValueOfCreditsByOwner(address _owner) public view returns (uint totalValue) {
+        uint totalCredits = nextCreditId - 1;
+        totalValue = 0;
+
+        for (uint i = 1; i <= totalCredits; i++) {
+            Credit storage credit = credits[i];
+            if (credit.owner == _owner) {
+                totalValue += credit.amount * credit.pricePerUnit;
+            }
+        }
+    }
 }
