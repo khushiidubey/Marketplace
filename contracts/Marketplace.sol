@@ -40,6 +40,7 @@ contract CreditMarketplace {
     event CreditDelisted(uint indexed creditId, address indexed owner);
     event CreditPriceUpdated(uint indexed creditId, uint oldPrice, uint newPrice);
     event CreditRelisted(uint indexed creditId, uint newPricePerUnit);
+    event CreditOwnershipTransferred(uint indexed creditId, address indexed oldOwner, address indexed newOwner);
 
     /**
      * @dev Lists a new credit on the marketplace
@@ -150,6 +151,23 @@ contract CreditMarketplace {
         credit.isListed = true;
 
         emit CreditRelisted(_creditId, _newPricePerUnit);
+    }
+
+    /**
+     * @dev Manually transfers ownership of a credit to another address
+     */
+    function transferCreditOwnership(uint _creditId, address _newOwner) public {
+        Credit storage credit = credits[_creditId];
+
+        require(credit.owner == msg.sender, "Only the current owner can transfer ownership");
+        require(_newOwner != address(0), "New owner cannot be zero address");
+        require(_newOwner != msg.sender, "Cannot transfer to self");
+
+        address oldOwner = credit.owner;
+        credit.owner = _newOwner;
+        credit.isListed = false; // Automatically delist after transfer
+
+        emit CreditOwnershipTransferred(_creditId, oldOwner, _newOwner);
     }
 
     /**
