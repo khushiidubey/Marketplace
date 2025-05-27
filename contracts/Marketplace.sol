@@ -42,9 +42,6 @@ contract CreditMarketplace {
     event CreditRelisted(uint indexed creditId, uint newPricePerUnit);
     event CreditOwnershipTransferred(uint indexed creditId, address indexed oldOwner, address indexed newOwner);
 
-    /**
-     * @dev Lists a new credit on the marketplace
-     */
     function listCredit(
         string memory _creditType,
         uint _amount,
@@ -69,9 +66,6 @@ contract CreditMarketplace {
         return creditId;
     }
 
-    /**
-     * @dev Purchases credits from the marketplace
-     */
     function purchaseCredit(uint _creditId, uint _amount) public payable {
         Credit storage credit = credits[_creditId];
 
@@ -84,21 +78,17 @@ contract CreditMarketplace {
 
         address payable seller = payable(credit.owner);
 
-        // Update credit amount or remove if all purchased
         if (credit.amount == _amount) {
             credit.isListed = false;
         }
         credit.amount -= _amount;
 
-        // Transfer ownership if all credits are bought
         if (credit.amount == 0) {
             credit.owner = msg.sender;
         }
 
-        // Send payment to seller
         seller.transfer(totalPrice);
 
-        // Refund excess payment
         if (msg.value > totalPrice) {
             payable(msg.sender).transfer(msg.value - totalPrice);
         }
@@ -106,9 +96,6 @@ contract CreditMarketplace {
         emit CreditPurchased(_creditId, seller, msg.sender, _amount, totalPrice);
     }
 
-    /**
-     * @dev Removes a credit listing from the marketplace
-     */
     function delistCredit(uint _creditId) public {
         Credit storage credit = credits[_creditId];
 
@@ -120,9 +107,6 @@ contract CreditMarketplace {
         emit CreditDelisted(_creditId, msg.sender);
     }
 
-    /**
-     * @dev Updates the price per unit for a listed credit
-     */
     function updateCreditPrice(uint _creditId, uint _newPricePerUnit) public {
         Credit storage credit = credits[_creditId];
 
@@ -136,9 +120,6 @@ contract CreditMarketplace {
         emit CreditPriceUpdated(_creditId, oldPrice, _newPricePerUnit);
     }
 
-    /**
-     * @dev Allows relisting of a credit with a new price
-     */
     function relistCredit(uint _creditId, uint _newPricePerUnit) public {
         Credit storage credit = credits[_creditId];
 
@@ -153,9 +134,6 @@ contract CreditMarketplace {
         emit CreditRelisted(_creditId, _newPricePerUnit);
     }
 
-    /**
-     * @dev Manually transfers ownership of a credit to another address
-     */
     function transferCreditOwnership(uint _creditId, address _newOwner) public {
         Credit storage credit = credits[_creditId];
 
@@ -165,14 +143,11 @@ contract CreditMarketplace {
 
         address oldOwner = credit.owner;
         credit.owner = _newOwner;
-        credit.isListed = false; // Automatically delist after transfer
+        credit.isListed = false;
 
         emit CreditOwnershipTransferred(_creditId, oldOwner, _newOwner);
     }
 
-    /**
-     * @dev Gets details of a specific credit
-     */
     function getCreditDetails(uint _creditId)
         public
         view
@@ -196,9 +171,6 @@ contract CreditMarketplace {
         );
     }
 
-    /**
-     * @dev Returns a list of all currently listed credit IDs
-     */
     function getListedCredits() public view returns (uint[] memory listedCreditIds) {
         uint totalCredits = nextCreditId - 1;
         uint count = 0;
@@ -219,9 +191,6 @@ contract CreditMarketplace {
         }
     }
 
-    /**
-     * @dev Returns credit IDs owned by a specific address
-     */
     function getCreditsByOwner(address _owner) public view returns (uint[] memory ownedCredits) {
         uint totalCredits = nextCreditId - 1;
         uint count = 0;
@@ -242,9 +211,6 @@ contract CreditMarketplace {
         }
     }
 
-    /**
-     * @dev Returns total value of all credits owned by an address
-     */
     function getTotalValueOfCreditsByOwner(address _owner) public view returns (uint totalValue) {
         uint totalCredits = nextCreditId - 1;
         totalValue = 0;
@@ -253,6 +219,21 @@ contract CreditMarketplace {
             Credit storage credit = credits[i];
             if (credit.owner == _owner) {
                 totalValue += credit.amount * credit.pricePerUnit;
+            }
+        }
+    }
+
+    /**
+     * @dev Returns the total market value of all listed credits
+     */
+    function getTotalListedValue() public view returns (uint totalListedValue) {
+        uint totalCredits = nextCreditId - 1;
+        totalListedValue = 0;
+
+        for (uint i = 1; i <= totalCredits; i++) {
+            Credit storage credit = credits[i];
+            if (credit.isListed) {
+                totalListedValue += credit.amount * credit.pricePerUnit;
             }
         }
     }
