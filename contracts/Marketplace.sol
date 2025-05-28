@@ -1,239 +1,122 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
-/**
- * @title CreditMarketplace
- * @dev Contract for listing, buying and trading credits
- */
 contract CreditMarketplace {
-    // Credit structure
     struct Credit {
         uint id;
         address owner;
-        string creditType; // e.g. "Carbon", "Renewable Energy", etc.
+        string creditType;
         uint amount;
         uint pricePerUnit;
         bool isListed;
     }
 
-    // Credit ID counter
     uint private nextCreditId = 1;
-
-    // Mapping from credit ID to Credit
     mapping(uint => Credit) public credits;
 
-    // Events
-    event CreditListed(
-        uint indexed creditId,
-        address indexed owner,
-        string creditType,
-        uint amount,
-        uint pricePerUnit
-    );
-    event CreditPurchased(
-        uint indexed creditId,
-        address indexed oldOwner,
-        address indexed newOwner,
-        uint amount,
-        uint totalPrice
-    );
-    event CreditDelisted(uint indexed creditId, address indexed owner);
-    event CreditPriceUpdated(uint indexed creditId, uint oldPrice, uint newPrice);
-    event CreditRelisted(uint indexed creditId, uint newPricePerUnit);
-    event CreditOwnershipTransferred(uint indexed creditId, address indexed oldOwner, address indexed newOwner);
+    event CreditListed(uint indexed id, address indexed owner, string creditType, uint amount, uint price);
+    event CreditPurchased(uint indexed id, address indexed from, address indexed to, uint amount, uint total);
+    event CreditDelisted(uint indexed id, address indexed owner);
+    event CreditPriceUpdated(uint indexed id, uint oldPrice, uint newPrice);
+    event CreditRelisted(uint indexed id, uint price);
+    event CreditOwnershipTransferred(uint indexed id, address indexed from, address indexed to);
 
-    function listCredit(
-        string memory _creditType,
-        uint _amount,
-        uint _pricePerUnit
-    ) public returns (uint) {
-        require(_amount > 0, "Amount must be greater than zero");
-        require(_pricePerUnit > 0, "Price must be greater than zero");
-
-        uint creditId = nextCreditId++;
-
-        credits[creditId] = Credit({
-            id: creditId,
-            owner: msg.sender,
-            creditType: _creditType,
-            amount: _amount,
-            pricePerUnit: _pricePerUnit,
-            isListed: true
-        });
-
-        emit CreditListed(creditId, msg.sender, _creditType, _amount, _pricePerUnit);
-
-        return creditId;
+    function listCredit(string memory _type, uint _amt, uint _price) public returns (uint id) {
+        require(_amt > 0 && _price > 0, "Invalid amount or price");
+        id = nextCreditId++;
+        credits[id] = Credit(id, msg.sender, _type, _amt, _price, true);
+        emit CreditListed(id, msg.sender, _type, _amt, _price);
     }
 
-    function purchaseCredit(uint _creditId, uint _amount) public payable {
-        Credit storage credit = credits[_creditId];
+    function purchaseCredit(uint id, uint _amt) public payable {
+        Credit storage c = credits[id];
+        require(c.isListed && c.owner != msg.sender && c.amount >= _amt, "Invalid purchase");
 
-        require(credit.isListed, "Credit is not listed for sale");
-        require(credit.owner != msg.sender, "You cannot buy your own credits");
-        require(credit.amount >= _amount, "Not enough credits available");
+        uint total = _amt * c.pricePerUnit;
+        require(msg.value >= total, "Insufficient funds");
 
-        uint totalPrice = _amount * credit.pricePerUnit;
-        require(msg.value >= totalPrice, "Insufficient payment");
+        payable(c.owner).transfer(total);
+        if (msg.value > total) payable(msg.sender).transfer(msg.value - total);
 
-        address payable seller = payable(credit.owner);
+        if (c.amount == _amt) c.isListed = false;
+        c.amount -= _amt;
+        if (c.amount == 0) c.owner = msg.sender;
 
-        if (credit.amount == _amount) {
-            credit.isListed = false;
-        }
-        credit.amount -= _amount;
-
-        if (credit.amount == 0) {
-            credit.owner = msg.sender;
-        }
-
-        seller.transfer(totalPrice);
-
-        if (msg.value > totalPrice) {
-            payable(msg.sender).transfer(msg.value - totalPrice);
-        }
-
-        emit CreditPurchased(_creditId, seller, msg.sender, _amount, totalPrice);
+        emit CreditPurchased(id, c.owner, msg.sender, _amt, total);
     }
 
-    function delistCredit(uint _creditId) public {
-        Credit storage credit = credits[_creditId];
-
-        require(credit.owner == msg.sender, "Only owner can delist credits");
-        require(credit.isListed, "Credit is not listed");
-
-        credit.isListed = false;
-
-        emit CreditDelisted(_creditId, msg.sender);
+    function delistCredit(uint id) public {
+        Credit storage c = credits[id];
+        require(c.owner == msg.sender && c.isListed, "Unauthorized or already delisted");
+        c.isListed = false;
+        emit CreditDelisted(id, msg.sender);
     }
 
-    function updateCreditPrice(uint _creditId, uint _newPricePerUnit) public {
-        Credit storage credit = credits[_creditId];
-
-        require(credit.owner == msg.sender, "Only the credit owner can update the price");
-        require(credit.isListed, "Credit must be listed to update price");
-        require(_newPricePerUnit > 0, "Price must be greater than zero");
-
-        uint oldPrice = credit.pricePerUnit;
-        credit.pricePerUnit = _newPricePerUnit;
-
-        emit CreditPriceUpdated(_creditId, oldPrice, _newPricePerUnit);
+    function updateCreditPrice(uint id, uint newPrice) public {
+        Credit storage c = credits[id];
+        require(c.owner == msg.sender && c.isListed && newPrice > 0, "Invalid update");
+        emit CreditPriceUpdated(id, c.pricePerUnit, newPrice);
+        c.pricePerUnit = newPrice;
     }
 
-    function relistCredit(uint _creditId, uint _newPricePerUnit) public {
-        Credit storage credit = credits[_creditId];
-
-        require(credit.owner == msg.sender, "Only the owner can relist");
-        require(!credit.isListed, "Credit is already listed");
-        require(credit.amount > 0, "No credit amount available");
-        require(_newPricePerUnit > 0, "Price must be greater than zero");
-
-        credit.pricePerUnit = _newPricePerUnit;
-        credit.isListed = true;
-
-        emit CreditRelisted(_creditId, _newPricePerUnit);
+    function relistCredit(uint id, uint price) public {
+        Credit storage c = credits[id];
+        require(c.owner == msg.sender && !c.isListed && c.amount > 0 && price > 0, "Invalid relist");
+        c.pricePerUnit = price;
+        c.isListed = true;
+        emit CreditRelisted(id, price);
     }
 
-    function transferCreditOwnership(uint _creditId, address _newOwner) public {
-        Credit storage credit = credits[_creditId];
-
-        require(credit.owner == msg.sender, "Only the current owner can transfer ownership");
-        require(_newOwner != address(0), "New owner cannot be zero address");
-        require(_newOwner != msg.sender, "Cannot transfer to self");
-
-        address oldOwner = credit.owner;
-        credit.owner = _newOwner;
-        credit.isListed = false;
-
-        emit CreditOwnershipTransferred(_creditId, oldOwner, _newOwner);
+    function transferCreditOwnership(uint id, address to) public {
+        Credit storage c = credits[id];
+        require(c.owner == msg.sender && to != address(0) && to != msg.sender, "Invalid transfer");
+        emit CreditOwnershipTransferred(id, c.owner, to);
+        c.owner = to;
+        c.isListed = false;
     }
 
-    function getCreditDetails(uint _creditId)
-        public
-        view
-        returns (
-            uint id,
-            address owner,
-            string memory creditType,
-            uint amount,
-            uint pricePerUnit,
-            bool isListed
-        )
-    {
-        Credit storage credit = credits[_creditId];
-        return (
-            credit.id,
-            credit.owner,
-            credit.creditType,
-            credit.amount,
-            credit.pricePerUnit,
-            credit.isListed
-        );
+    function burnCredit(uint id, uint amt) public {
+        Credit storage c = credits[id];
+        require(c.owner == msg.sender && amt > 0 && c.amount >= amt, "Invalid burn");
+        c.amount -= amt;
+        if (c.amount == 0) c.isListed = false;
     }
 
-    function getListedCredits() public view returns (uint[] memory listedCreditIds) {
-        uint totalCredits = nextCreditId - 1;
-        uint count = 0;
+    function getCreditDetails(uint id) public view returns (Credit memory) {
+        return credits[id];
+    }
 
-        for (uint i = 1; i <= totalCredits; i++) {
-            if (credits[i].isListed) {
-                count++;
-            }
-        }
+    function getListedCredits() public view returns (uint[] memory ids) {
+        return filterCredits(true, address(0));
+    }
 
-        listedCreditIds = new uint[](count);
-        uint index = 0;
+    function getCreditsByOwner(address owner) public view returns (uint[] memory ids) {
+        return filterCredits(false, owner);
+    }
 
-        for (uint i = 1; i <= totalCredits; i++) {
-            if (credits[i].isListed) {
-                listedCreditIds[index++] = i;
-            }
+    function getTotalValueOfCreditsByOwner(address owner) public view returns (uint total) {
+        for (uint i = 1; i < nextCreditId; i++) {
+            if (credits[i].owner == owner) total += credits[i].amount * credits[i].pricePerUnit;
         }
     }
 
-    function getCreditsByOwner(address _owner) public view returns (uint[] memory ownedCredits) {
-        uint totalCredits = nextCreditId - 1;
-        uint count = 0;
-
-        for (uint i = 1; i <= totalCredits; i++) {
-            if (credits[i].owner == _owner) {
-                count++;
-            }
-        }
-
-        ownedCredits = new uint[](count);
-        uint index = 0;
-
-        for (uint i = 1; i <= totalCredits; i++) {
-            if (credits[i].owner == _owner) {
-                ownedCredits[index++] = i;
-            }
+    function getTotalListedValue() public view returns (uint total) {
+        for (uint i = 1; i < nextCreditId; i++) {
+            if (credits[i].isListed) total += credits[i].amount * credits[i].pricePerUnit;
         }
     }
 
-    function getTotalValueOfCreditsByOwner(address _owner) public view returns (uint totalValue) {
-        uint totalCredits = nextCreditId - 1;
-        totalValue = 0;
-
-        for (uint i = 1; i <= totalCredits; i++) {
-            Credit storage credit = credits[i];
-            if (credit.owner == _owner) {
-                totalValue += credit.amount * credit.pricePerUnit;
-            }
+    function filterCredits(bool byListed, address byOwner) internal view returns (uint[] memory result) {
+        uint count;
+        for (uint i = 1; i < nextCreditId; i++) {
+            if ((byListed && credits[i].isListed) || (!byListed && credits[i].owner == byOwner)) count++;
         }
-    }
 
-    /**
-     * @dev Returns the total market value of all listed credits
-     */
-    function getTotalListedValue() public view returns (uint totalListedValue) {
-        uint totalCredits = nextCreditId - 1;
-        totalListedValue = 0;
-
-        for (uint i = 1; i <= totalCredits; i++) {
-            Credit storage credit = credits[i];
-            if (credit.isListed) {
-                totalListedValue += credit.amount * credit.pricePerUnit;
+        result = new uint[](count);
+        uint idx = 0;
+        for (uint i = 1; i < nextCreditId; i++) {
+            if ((byListed && credits[i].isListed) || (!byListed && credits[i].owner == byOwner)) {
+                result[idx++] = i;
             }
         }
     }
