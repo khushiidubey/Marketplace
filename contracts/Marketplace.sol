@@ -120,4 +120,13 @@ contract CreditMarketplace {
             }
         }
     }
+
+    // ✅ New Function Added Below
+    function getAllCredits() public view returns (uint[] memory ids) {
+        uint count = nextCreditId - 1;
+        ids = new uint[](count);
+        for (uint i = 1; i <= count; i++) {
+            ids[i - 1] = i;
+        }
+    }
 }
