@@ -121,12 +121,30 @@ contract CreditMarketplace {
         }
     }
 
-    // ✅ New Function Added Below
     function getAllCredits() public view returns (uint[] memory ids) {
         uint count = nextCreditId - 1;
         ids = new uint[](count);
         for (uint i = 1; i <= count; i++) {
             ids[i - 1] = i;
         }
+    }
+
+    // ✅ New Function: Get all credits by credit type
+    function getCreditsByType(string memory creditType) public view returns (uint[] memory) {
+        uint count;
+        for (uint i = 1; i < nextCreditId; i++) {
+            if (keccak256(bytes(credits[i].creditType)) == keccak256(bytes(creditType))) {
+                count++;
+            }
+        }
+
+        uint[] memory result = new uint[](count);
+        uint index = 0;
+        for (uint i = 1; i < nextCreditId; i++) {
+            if (keccak256(bytes(credits[i].creditType)) == keccak256(bytes(creditType))) {
+                result[index++] = i;
+            }
+        }
+        return result;
     }
 }
