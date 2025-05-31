@@ -1,24 +1,25 @@
-const { ethers } = require("hardhat");
+const hre = require("hardhat");
 
 async function main() {
-  console.log("Deploying CreditMarketplace contract...");
+  console.log("📦 Deploying CreditMarketplace contract...");
 
-  // Get the ContractFactory
-  const CreditMarketplace = await ethers.getContractFactory("CreditMarketplace");
-  
+  // Get the contract factory
+  const CreditMarketplaceFactory = await hre.ethers.getContractFactory("CreditMarketplace");
+
   // Deploy the contract
-  const creditMarketplace = await CreditMarketplace.deploy();
+  const creditMarketplace = await CreditMarketplaceFactory.deploy();
 
-  // Wait for deployment to finish
-  await creditMarketplace.waitForDeployment();
+  // Wait for the deployment to complete
+  await creditMarketplace.deployed();
 
-  const address = await creditMarketplace.getAddress();
-  console.log(`CreditMarketplace deployed to: ${address}`);
+  // Output the deployed contract address
+  console.log(`✅ CreditMarketplace deployed to: ${creditMarketplace.address}`);
 }
 
+// Run the deployment script
 main()
   .then(() => process.exit(0))
   .catch((error) => {
-    console.error(error);
+    console.error("❌ Deployment failed:", error);
     process.exit(1);
   });
