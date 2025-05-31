@@ -39,10 +39,7 @@ This marketplace can be particularly useful for environmental credits trading, w
 This project is configured to work with Core Testnet 2 at RPC URL: https://rpc.test2.btcs.network
 
 
-Contract Address : 0x9093F06665fABd172E602aE086C9bE2918e94095
-
-
-
-![image](https://github.com/user-attachments/assets/fa2460f2-408c-42e1-a7cc-aaa106bb1e0b)
+Contract Address : 0x3f7b9814e46828F098aB6Fb6a25823005CE2f487
+![image](https://github.com/user-attachments/assets/1cc400b1-d4af-4c2a-bfa6-285b5ddb355d)
 
 
