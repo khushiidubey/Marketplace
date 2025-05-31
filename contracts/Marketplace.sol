@@ -129,7 +129,7 @@ contract CreditMarketplace {
         }
     }
 
-    // ✅ New Function: Get all credits by credit type
+    // ✅ Get all credits by credit type
     function getCreditsByType(string memory creditType) public view returns (uint[] memory) {
         uint count;
         for (uint i = 1; i < nextCreditId; i++) {
@@ -145,6 +145,32 @@ contract CreditMarketplace {
                 result[index++] = i;
             }
         }
+        return result;
+    }
+
+    // ✅ NEW FUNCTION: Get all credits owned by an address and of a specific type
+    function getCreditsByOwnerAndType(address owner, string memory creditType) public view returns (uint[] memory) {
+        uint count = 0;
+        for (uint i = 1; i < nextCreditId; i++) {
+            if (
+                credits[i].owner == owner &&
+                keccak256(bytes(credits[i].creditType)) == keccak256(bytes(creditType))
+            ) {
+                count++;
+            }
+        }
+
+        uint[] memory result = new uint[](count);
+        uint index = 0;
+        for (uint i = 1; i < nextCreditId; i++) {
+            if (
+                credits[i].owner == owner &&
+                keccak256(bytes(credits[i].creditType)) == keccak256(bytes(creditType))
+            ) {
+                result[index++] = i;
+            }
+        }
+
         return result;
     }
 }
