@@ -20,6 +20,7 @@ contract CreditMarketplace {
     event CreditPriceUpdated(uint indexed id, uint oldPrice, uint newPrice);
     event CreditRelisted(uint indexed id, uint price);
     event CreditOwnershipTransferred(uint indexed id, address indexed from, address indexed to);
+    event CreditAmountIncreased(uint indexed id, uint additionalAmount, uint newTotalAmount);
 
     modifier onlyOwner(uint id) {
         require(credits[id].owner == msg.sender, "Not the owner");
@@ -116,6 +117,21 @@ contract CreditMarketplace {
 
         c.amount -= amount;
         if (c.amount == 0) c.isListed = false;
+    }
+
+    function increaseCreditAmount(uint id, uint additionalAmount) external onlyOwner(id) creditExists(id) {
+        require(additionalAmount > 0, "Amount must be greater than zero");
+
+        Credit storage c = credits[id];
+        c.amount += additionalAmount;
+
+        // Optionally relist if it was previously delisted due to 0 amount
+        if (!c.isListed) {
+            c.isListed = true;
+            emit CreditRelisted(id, c.pricePerUnit);
+        }
+
+        emit CreditAmountIncreased(id, additionalAmount, c.amount);
     }
 
     function getCreditDetails(uint id) external view creditExists(id) returns (Credit memory) {
