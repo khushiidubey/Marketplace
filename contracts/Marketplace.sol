@@ -180,6 +180,18 @@ contract CreditMarketplace {
         }
     }
 
+    // ✅ NEW FUNCTION: Lightweight summary of credit info
+    function getCreditSummary(uint id) external view creditExists(id) returns (
+        string memory creditType,
+        address owner,
+        uint amount,
+        uint pricePerUnit,
+        bool isListed
+    ) {
+        Credit storage c = credits[id];
+        return (c.creditType, c.owner, c.amount, c.pricePerUnit, c.isListed);
+    }
+
     // Internal utility function
     function filterCredits(bool byListed, address byOwner, string memory byType) internal view returns (uint[] memory result) {
         uint count;
