@@ -53,13 +53,11 @@ contract CreditMarketplace {
 
         address seller = c.owner;
 
-        // Transfer funds
         payable(seller).transfer(total);
         if (msg.value > total) {
-            payable(msg.sender).transfer(msg.value - total); // Refund excess
+            payable(msg.sender).transfer(msg.value - total);
         }
 
-        // Update credit
         c.amount -= _amount;
         if (c.amount == 0) {
             c.owner = msg.sender;
@@ -125,7 +123,6 @@ contract CreditMarketplace {
         Credit storage c = credits[id];
         c.amount += additionalAmount;
 
-        // Optionally relist if it was previously delisted due to 0 amount
         if (!c.isListed) {
             c.isListed = true;
             emit CreditRelisted(id, c.pricePerUnit);
@@ -180,7 +177,6 @@ contract CreditMarketplace {
         }
     }
 
-    // ✅ NEW FUNCTION: Lightweight summary of credit info
     function getCreditSummary(uint id) external view creditExists(id) returns (
         string memory creditType,
         address owner,
@@ -192,10 +188,36 @@ contract CreditMarketplace {
         return (c.creditType, c.owner, c.amount, c.pricePerUnit, c.isListed);
     }
 
-    // Internal utility function
+    // ✅ NEW FUNCTION: Batch list credits
+    function batchListCredits(
+        string[] memory _creditTypes,
+        uint[] memory _amounts,
+        uint[] memory _prices
+    ) external returns (uint[] memory ids) {
+        require(
+            _creditTypes.length == _amounts.length && _amounts.length == _prices.length,
+            "Array lengths must match"
+        );
+
+        uint count = _creditTypes.length;
+        require(count > 0, "Empty input");
+
+        ids = new uint[](count);
+
+        for (uint i = 0; i < count; i++) {
+            require(_amounts[i] > 0 && _prices[i] > 0, "Invalid amount or price");
+
+            uint id = nextCreditId++;
+            credits[id] = Credit(id, msg.sender, _creditTypes[i], _amounts[i], _prices[i], true);
+
+            emit CreditListed(id, msg.sender, _creditTypes[i], _amounts[i], _prices[i]);
+            ids[i] = id;
+        }
+    }
+
+    // Internal utility
     function filterCredits(bool byListed, address byOwner, string memory byType) internal view returns (uint[] memory result) {
         uint count;
-
         bytes32 typeHash = keccak256(bytes(byType));
 
         for (uint i = 1; i < nextCreditId; i++) {
