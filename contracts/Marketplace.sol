@@ -14,6 +14,13 @@ contract CreditMarketplace {
     uint private nextCreditId = 1;
     mapping(uint => Credit) private credits;
 
+    address public contractOwner;
+    bool public paused = false;
+
+    constructor() {
+        contractOwner = msg.sender;
+    }
+
     event CreditListed(uint indexed id, address indexed owner, string creditType, uint amount, uint price);
     event CreditPurchased(uint indexed id, address indexed from, address indexed to, uint amount, uint total);
     event CreditDelisted(uint indexed id, address indexed owner);
@@ -21,6 +28,8 @@ contract CreditMarketplace {
     event CreditRelisted(uint indexed id, uint price);
     event CreditOwnershipTransferred(uint indexed id, address indexed from, address indexed to);
     event CreditAmountIncreased(uint indexed id, uint additionalAmount, uint newTotalAmount);
+    event Paused();
+    event Unpaused();
 
     modifier onlyOwner(uint id) {
         require(credits[id].owner == msg.sender, "Not the owner");
@@ -32,7 +41,31 @@ contract CreditMarketplace {
         _;
     }
 
-    function listCredit(string memory creditType, uint amount, uint pricePerUnit) external returns (uint id) {
+    modifier onlyContractOwner() {
+        require(msg.sender == contractOwner, "Not contract owner");
+        _;
+    }
+
+    modifier whenNotPaused() {
+        require(!paused, "Marketplace is paused");
+        _;
+    }
+
+    function pauseMarketplace() external onlyContractOwner {
+        paused = true;
+        emit Paused();
+    }
+
+    function unpauseMarketplace() external onlyContractOwner {
+        paused = false;
+        emit Unpaused();
+    }
+
+    function listCredit(string memory creditType, uint amount, uint pricePerUnit)
+        external
+        whenNotPaused
+        returns (uint id)
+    {
         require(amount > 0 && pricePerUnit > 0, "Invalid amount or price");
 
         id = nextCreditId++;
@@ -43,6 +76,7 @@ contract CreditMarketplace {
 
     function batchListCredits(string[] memory creditTypes, uint[] memory amounts, uint[] memory prices)
         external
+        whenNotPaused
         returns (uint[] memory ids)
     {
         uint count = creditTypes.length;
@@ -62,7 +96,12 @@ contract CreditMarketplace {
         }
     }
 
-    function purchaseCredit(uint id, uint amount) external payable creditExists(id) {
+    function purchaseCredit(uint id, uint amount)
+        external
+        payable
+        whenNotPaused
+        creditExists(id)
+    {
         Credit storage c = credits[id];
 
         require(c.isListed, "Credit not listed");
@@ -142,7 +181,12 @@ contract CreditMarketplace {
         if (c.amount == 0) c.isListed = false;
     }
 
-    function increaseCreditAmount(uint id, uint additionalAmount) external onlyOwner(id) creditExists(id) {
+    function increaseCreditAmount(uint id, uint additionalAmount)
+        external
+        onlyOwner(id)
+        creditExists(id)
+        whenNotPaused
+    {
         require(additionalAmount > 0, "Amount must be > 0");
 
         Credit storage c = credits[id];
