@@ -293,4 +293,14 @@ contract CreditMarketplace {
 
         return matchListed && matchOwner && matchType;
     }
+
+    /**
+     * @notice Allows the contract owner to withdraw any Ether held in the contract
+     */
+    function withdrawContractBalance() external onlyContractOwner {
+        uint balance = address(this).balance;
+        require(balance > 0, "No balance to withdraw");
+
+        payable(contractOwner).transfer(balance);
+    }
 }
