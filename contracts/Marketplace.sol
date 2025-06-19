@@ -303,4 +303,23 @@ contract CreditMarketplace {
 
         payable(contractOwner).transfer(balance);
     }
+
+    /**
+     * @notice Returns all listed credits with full details
+     */
+    function getAllListedCreditsDetails() external view returns (Credit[] memory listedCredits) {
+        uint count;
+        for (uint i = 1; i < nextCreditId; i++) {
+            if (credits[i].isListed) count++;
+        }
+
+        listedCredits = new Credit[](count);
+        uint index = 0;
+
+        for (uint i = 1; i < nextCreditId; i++) {
+            if (credits[i].isListed) {
+                listedCredits[index++] = credits[i];
+            }
+        }
+    }
 }
