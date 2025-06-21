@@ -296,18 +296,19 @@ contract CreditMarketplace {
     }
 
     function getAllListedCreditsDetails() external view returns (Credit[] memory listedCredits) {
-        uint count;
-        for (uint i = 1; i < nextCreditId; i++) {
-            if (credits[i].isListed) count++;
+        uint totalCredits = nextCreditId - 1;
+        uint[] memory tempIds = new uint[](totalCredits);
+        uint listedCount;
+
+        for (uint i = 1; i <= totalCredits; i++) {
+            if (credits[i].isListed) {
+                tempIds[listedCount++] = i;
+            }
         }
 
-        listedCredits = new Credit[](count);
-        uint index = 0;
-
-        for (uint i = 1; i < nextCreditId; i++) {
-            if (credits[i].isListed) {
-                listedCredits[index++] = credits[i];
-            }
+        listedCredits = new Credit[](listedCount);
+        for (uint i = 0; i < listedCount; i++) {
+            listedCredits[i] = credits[tempIds[i]];
         }
     }
 }
