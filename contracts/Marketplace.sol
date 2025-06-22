@@ -15,11 +15,9 @@ contract CreditMarketplace {
     mapping(uint => Credit) private credits;
 
     address public contractOwner;
-    bool public paused = false;
+    bool public paused;
 
-    constructor() {
-        contractOwner = msg.sender;
-    }
+    // --- Events ---
 
     event CreditListed(uint indexed id, address indexed owner, string creditType, uint amount, uint price);
     event CreditPurchased(uint indexed id, address indexed from, address indexed to, uint amount, uint total);
@@ -30,6 +28,8 @@ contract CreditMarketplace {
     event CreditAmountIncreased(uint indexed id, uint additionalAmount, uint newTotalAmount);
     event Paused();
     event Unpaused();
+
+    // --- Modifiers ---
 
     modifier onlyOwner(uint id) {
         require(credits[id].owner == msg.sender, "Not the owner");
@@ -51,6 +51,14 @@ contract CreditMarketplace {
         _;
     }
 
+    // --- Constructor ---
+
+    constructor() {
+        contractOwner = msg.sender;
+    }
+
+    // --- Admin Functions ---
+
     function pauseMarketplace() external onlyContractOwner {
         paused = true;
         emit Paused();
@@ -60,6 +68,14 @@ contract CreditMarketplace {
         paused = false;
         emit Unpaused();
     }
+
+    function withdrawContractBalance() external onlyContractOwner {
+        uint balance = address(this).balance;
+        require(balance > 0, "No balance to withdraw");
+        payable(contractOwner).transfer(balance);
+    }
+
+    // --- Listing Functions ---
 
     function listCredit(string memory creditType, uint amount, uint pricePerUnit)
         external
@@ -86,24 +102,47 @@ contract CreditMarketplace {
         }
     }
 
-    function _createAndListCredit(
-        address owner,
-        string memory creditType,
-        uint amount,
-        uint pricePerUnit
-    ) private returns (uint id) {
-        id = nextCreditId++;
-        credits[id] = Credit({
-            id: id,
-            owner: owner,
-            creditType: creditType,
-            amount: amount,
-            pricePerUnit: pricePerUnit,
-            isListed: true
-        });
+    function relistCredit(uint id, uint newPrice)
+        external
+        onlyOwner(id)
+        creditExists(id)
+    {
+        require(newPrice > 0, "Invalid price");
+        Credit storage c = credits[id];
+        require(!c.isListed, "Already listed");
+        require(c.amount > 0, "No credit left");
 
-        emit CreditListed(id, owner, creditType, amount, pricePerUnit);
+        c.pricePerUnit = newPrice;
+        c.isListed = true;
+        emit CreditRelisted(id, newPrice);
     }
+
+    function delistCredit(uint id)
+        external
+        onlyOwner(id)
+        creditExists(id)
+    {
+        Credit storage c = credits[id];
+        require(c.isListed, "Already delisted");
+        c.isListed = false;
+        emit CreditDelisted(id, msg.sender);
+    }
+
+    function updateCreditPrice(uint id, uint newPrice)
+        external
+        onlyOwner(id)
+        creditExists(id)
+    {
+        require(newPrice > 0, "Invalid price");
+        Credit storage c = credits[id];
+        require(c.isListed, "Credit not listed");
+
+        uint oldPrice = c.pricePerUnit;
+        c.pricePerUnit = newPrice;
+        emit CreditPriceUpdated(id, oldPrice, newPrice);
+    }
+
+    // --- Purchase Function ---
 
     function purchaseCredit(uint id, uint amount)
         external
@@ -114,7 +153,7 @@ contract CreditMarketplace {
         Credit storage c = credits[id];
         require(c.isListed, "Credit not listed");
         require(c.owner != msg.sender, "Buyer cannot be owner");
-        require(c.amount >= amount, "Insufficient credit amount");
+        require(c.amount >= amount, "Insufficient credit");
 
         uint totalPrice = amount * c.pricePerUnit;
         require(msg.value >= totalPrice, "Insufficient payment");
@@ -128,7 +167,6 @@ contract CreditMarketplace {
         }
 
         payable(seller).transfer(totalPrice);
-
         if (msg.value > totalPrice) {
             payable(msg.sender).transfer(msg.value - totalPrice);
         }
@@ -136,46 +174,35 @@ contract CreditMarketplace {
         emit CreditPurchased(id, seller, msg.sender, amount, totalPrice);
     }
 
-    function delistCredit(uint id) external onlyOwner(id) creditExists(id) {
-        Credit storage c = credits[id];
-        require(c.isListed, "Already delisted");
-        c.isListed = false;
-        emit CreditDelisted(id, msg.sender);
-    }
+    // --- Management Functions ---
 
-    function updateCreditPrice(uint id, uint newPrice) external onlyOwner(id) creditExists(id) {
-        require(newPrice > 0, "Invalid price");
-        Credit storage c = credits[id];
-        require(c.isListed, "Credit not listed");
-        uint oldPrice = c.pricePerUnit;
-        c.pricePerUnit = newPrice;
-        emit CreditPriceUpdated(id, oldPrice, newPrice);
-    }
-
-    function relistCredit(uint id, uint newPrice) external onlyOwner(id) creditExists(id) {
-        require(newPrice > 0, "Invalid price");
-        Credit storage c = credits[id];
-        require(!c.isListed, "Already listed");
-        require(c.amount > 0, "No credit left to list");
-        c.pricePerUnit = newPrice;
-        c.isListed = true;
-        emit CreditRelisted(id, newPrice);
-    }
-
-    function transferCreditOwnership(uint id, address to) external onlyOwner(id) creditExists(id) {
+    function transferCreditOwnership(uint id, address to)
+        external
+        onlyOwner(id)
+        creditExists(id)
+    {
         require(to != address(0) && to != msg.sender, "Invalid recipient");
         Credit storage c = credits[id];
         address from = c.owner;
+
         c.owner = to;
         c.isListed = false;
+
         emit CreditOwnershipTransferred(id, from, to);
     }
 
-    function burnCredit(uint id, uint amount) external onlyOwner(id) creditExists(id) {
+    function burnCredit(uint id, uint amount)
+        external
+        onlyOwner(id)
+        creditExists(id)
+    {
         Credit storage c = credits[id];
         require(amount > 0 && c.amount >= amount, "Invalid burn amount");
         c.amount -= amount;
-        if (c.amount == 0) c.isListed = false;
+
+        if (c.amount == 0) {
+            c.isListed = false;
+        }
     }
 
     function increaseCreditAmount(uint id, uint additionalAmount)
@@ -196,11 +223,21 @@ contract CreditMarketplace {
         emit CreditAmountIncreased(id, additionalAmount, c.amount);
     }
 
-    function getCreditDetails(uint id) external view creditExists(id) returns (Credit memory) {
+    // --- View Functions ---
+
+    function getCreditDetails(uint id)
+        external
+        view
+        creditExists(id)
+        returns (Credit memory)
+    {
         return credits[id];
     }
 
-    function getCreditSummary(uint id) external view creditExists(id)
+    function getCreditSummary(uint id)
+        external
+        view
+        creditExists(id)
         returns (string memory, address, uint, uint, bool)
     {
         Credit storage c = credits[id];
@@ -210,8 +247,8 @@ contract CreditMarketplace {
     function getAllCredits() external view returns (uint[] memory ids) {
         uint count = nextCreditId - 1;
         ids = new uint[](count);
-        for (uint i = 1; i <= count; i++) {
-            ids[i - 1] = i;
+        for (uint i = 0; i < count; i++) {
+            ids[i] = i + 1;
         }
     }
 
@@ -227,8 +264,22 @@ contract CreditMarketplace {
         return filterCredits(false, address(0), creditType);
     }
 
-    function getCreditsByOwnerAndType(address owner, string memory creditType) external view returns (uint[] memory) {
+    function getCreditsByOwnerAndType(address owner, string memory creditType)
+        external
+        view
+        returns (uint[] memory)
+    {
         return filterCredits(false, owner, creditType);
+    }
+
+    function getAllListedCreditsDetails() external view returns (Credit[] memory listedCredits) {
+        uint[] memory listedIds = filterCredits(true, address(0), "");
+        uint len = listedIds.length;
+        listedCredits = new Credit[](len);
+
+        for (uint i = 0; i < len; i++) {
+            listedCredits[i] = credits[listedIds[i]];
+        }
     }
 
     function getTotalValueOfCreditsByOwner(address owner) external view returns (uint total) {
@@ -249,66 +300,44 @@ contract CreditMarketplace {
         }
     }
 
+    // --- Internal Functions ---
+
+    function _createAndListCredit(
+        address owner,
+        string memory creditType,
+        uint amount,
+        uint pricePerUnit
+    ) internal returns (uint id) {
+        id = nextCreditId++;
+        credits[id] = Credit(id, owner, creditType, amount, pricePerUnit, true);
+        emit CreditListed(id, owner, creditType, amount, pricePerUnit);
+    }
+
     function filterCredits(
         bool onlyListed,
         address filterOwner,
         string memory filterType
     ) internal view returns (uint[] memory result) {
-        uint tempCount;
+        uint[] memory temp = new uint[](nextCreditId - 1);
+        uint count = 0;
+
         bytes32 typeHash = keccak256(bytes(filterType));
         bool filterByType = bytes(filterType).length > 0;
 
         for (uint i = 1; i < nextCreditId; i++) {
             Credit storage c = credits[i];
-            if (_matchFilters(c, onlyListed, filterOwner, typeHash, filterByType)) {
-                tempCount++;
+            if (
+                (!onlyListed || c.isListed) &&
+                (filterOwner == address(0) || c.owner == filterOwner) &&
+                (!filterByType || keccak256(bytes(c.creditType)) == typeHash)
+            ) {
+                temp[count++] = i;
             }
         }
 
-        result = new uint[](tempCount);
-        uint idx;
-
-        for (uint i = 1; i < nextCreditId; i++) {
-            Credit storage c = credits[i];
-            if (_matchFilters(c, onlyListed, filterOwner, typeHash, filterByType)) {
-                result[idx++] = i;
-            }
-        }
-    }
-
-    function _matchFilters(
-        Credit storage c,
-        bool onlyListed,
-        address filterOwner,
-        bytes32 typeHash,
-        bool filterByType
-    ) private view returns (bool) {
-        bool matchListed = !onlyListed || c.isListed;
-        bool matchOwner = filterOwner == address(0) || c.owner == filterOwner;
-        bool matchType = !filterByType || keccak256(bytes(c.creditType)) == typeHash;
-        return matchListed && matchOwner && matchType;
-    }
-
-    function withdrawContractBalance() external onlyContractOwner {
-        uint balance = address(this).balance;
-        require(balance > 0, "No balance to withdraw");
-        payable(contractOwner).transfer(balance);
-    }
-
-    function getAllListedCreditsDetails() external view returns (Credit[] memory listedCredits) {
-        uint totalCredits = nextCreditId - 1;
-        uint[] memory tempIds = new uint[](totalCredits);
-        uint listedCount;
-
-        for (uint i = 1; i <= totalCredits; i++) {
-            if (credits[i].isListed) {
-                tempIds[listedCount++] = i;
-            }
-        }
-
-        listedCredits = new Credit[](listedCount);
-        for (uint i = 0; i < listedCount; i++) {
-            listedCredits[i] = credits[tempIds[i]];
+        result = new uint[](count);
+        for (uint j = 0; j < count; j++) {
+            result[j] = temp[j];
         }
     }
 }
