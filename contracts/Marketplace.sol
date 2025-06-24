@@ -2,7 +2,6 @@
 pragma solidity ^0.8.17;
 
 contract CreditMarketplace {
-    // --- Structs ---
     struct Credit {
         uint id;
         address owner;
@@ -12,7 +11,6 @@ contract CreditMarketplace {
         bool isListed;
     }
 
-    // --- State Variables ---
     uint private nextCreditId = 1;
     mapping(uint => Credit) private credits;
 
@@ -27,6 +25,7 @@ contract CreditMarketplace {
     event CreditRelisted(uint indexed id, uint price);
     event CreditOwnershipTransferred(uint indexed id, address indexed from, address indexed to);
     event CreditAmountIncreased(uint indexed id, uint additionalAmount, uint newTotalAmount);
+    event CreditTypeUpdated(uint indexed id, string oldType, string newType);
     event Paused();
     event Unpaused();
 
@@ -139,6 +138,21 @@ contract CreditMarketplace {
         uint oldPrice = c.pricePerUnit;
         c.pricePerUnit = newPrice;
         emit CreditPriceUpdated(id, oldPrice, newPrice);
+    }
+
+    // --- New Function: Update Credit Type ---
+    function updateCreditType(uint id, string calldata newType)
+        external
+        creditExists(id)
+        onlyCreditOwner(id)
+    {
+        require(bytes(newType).length > 0, "Invalid type");
+
+        Credit storage c = credits[id];
+        string memory oldType = c.creditType;
+        c.creditType = newType;
+
+        emit CreditTypeUpdated(id, oldType, newType);
     }
 
     // --- Purchase Function ---
