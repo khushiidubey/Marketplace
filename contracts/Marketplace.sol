@@ -1,4 +1,4 @@
-// SPDX-License-Identifier:
+// SPDX-License-Identifier: mit
 pragma solidity ^0.8.17;
 contract CreditMarketplace {
     struct Credit {
@@ -344,3 +344,4 @@ contract CreditMarketplace {
         }
     }
 }
+
